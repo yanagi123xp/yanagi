@@ -2,7 +2,7 @@
 
 // 月別「残業時間」の推移を棒グラフで表示する。
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { SalaryRecordRow } from "@/types/database";
+import type { SalaryRecordRow } from "@/types/salary";
 import { sortByYearMonthAsc } from "@/lib/salary/calc";
 import { formatHours } from "@/lib/format";
 

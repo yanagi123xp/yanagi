@@ -9,13 +9,9 @@ import { monthLabel } from "@/lib/format";
 
 export default function SalaryDetailPage() {
   const params = useParams<{ id: string }>();
-  const { records, loading } = useSalaryData();
+  const { records } = useSalaryData();
 
   const record = records.find((r) => r.id === params.id);
-
-  if (loading) {
-    return <p className="pt-10 text-center text-sm text-muted">読み込み中...</p>;
-  }
 
   if (!record) {
     return (

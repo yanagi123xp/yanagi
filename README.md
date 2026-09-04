@@ -3,14 +3,15 @@
 毎月の給与明細を記録し、手取り額・総支給額・控除額・残業代・年収などを確認できる、個人用の給与管理Webアプリです。
 スマホ（iPhoneのSafari/Chromeなど）で使いやすいレスポンシブデザインで、ホーム画面に追加するとアプリのように使えます（PWA対応）。
 
+**外部サービスのアカウント作成やSQL実行は一切不要です。** すべてのデータはこのアプリを開いたブラウザの中（localStorage）だけに保存されます。
+
 ## 技術構成
 
 - Next.js（App Router） + TypeScript
 - Tailwind CSS
-- Supabase（認証・データベース）
-- Vercel（デプロイ想定）
+- ブラウザの localStorage（データ保存先。サーバー・データベースなし）
 
-## セットアップ手順（初心者向け）
+## セットアップ手順
 
 ### 1. 依存パッケージのインストール
 
@@ -18,85 +19,71 @@
 npm install
 ```
 
-### 2. Supabaseプロジェクトを作成する
-
-1. https://supabase.com/ にアクセスし、アカウントを作成
-2. 「New Project」から新しいプロジェクトを作成（リージョンは `Northeast Asia (Tokyo)` がおすすめ）
-3. プロジェクト作成後、左メニューの「SQL Editor」を開く
-
-### 3. データベースを作成する
-
-1. `supabase/migrations/0001_init.sql` の中身を全てコピー
-2. SupabaseのSQL Editorに貼り付けて「Run」を実行
-
-これで `profiles` テーブルと `salary_records` テーブルが作成され、RLS（行レベルセキュリティ）も有効化されます。
-自分以外のユーザーは自分のデータを閲覧・編集できません。
-
-### 4. 環境変数を設定する
-
-1. `.env.local.example` をコピーして `.env.local` を作成
-
-```bash
-cp .env.local.example .env.local
-```
-
-2. Supabaseダッシュボードの「Project Settings」→「API」を開き、以下をコピーして `.env.local` に貼り付け
-
-```
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=xxxxxxxxxxxxxxxxxxxx
-```
-
-`.env.local` はGit管理対象外なので、安全にAPIキーを書くことができます。
-
-### 5. 開発サーバーを起動する
+### 2. 開発サーバーを起動する
 
 ```bash
 npm run dev
 ```
 
-http://localhost:3000 にアクセスし、新規登録（メールアドレス＋パスワード）→ログイン→給与登録の流れを確認してください。
+http://localhost:3000 にアクセスすればすぐに使えます。ログインや初期設定は不要です。
 
-### 6. Supabaseのメール確認設定について
+### 3. デプロイする場合（任意）
 
-初期状態ではSupabaseは新規登録時に確認メールを送る設定になっています。
-自分専用アプリとしてすぐ使いたい場合は、Supabaseダッシュボードの
-「Authentication」→「Providers」→「Email」で `Confirm email` をオフにすると、
-確認メールなしですぐログインできるようになります（個人利用なのでオフで問題ありません）。
+Vercelなどにデプロイする場合も、環境変数の設定は不要です。GitHubリポジトリをインポートしてDeployするだけで動きます。
+
+## データの保存場所について（重要）
+
+このアプリはアカウント登録やサーバーを使わず、**開いているブラウザの localStorage** にのみ給与データを保存します。
+
+- 良い点：個人情報が外部に送信されない、セットアップが不要ですぐ使える
+- 注意点：
+  - ブラウザやiPhoneの「サイトデータを消去」を行うとデータが消えます
+  - 別のブラウザ・別の端末からは同じデータを見られません（アプリの中身は同じでも、保存場所が端末ごとに独立しているため）
+  - iPhoneではSafariの「ホーム画面に追加」で開いたアプリと、通常のSafariタブとでデータ保存領域が分かれる場合があります。基本的には常に同じ方法（ホーム画面のアイコン）から開くようにしてください
+
+そのため、**設定画面の「バックアップ（JSON）を保存」から定期的にバックアップを取っておくことを強くおすすめします。** 万が一データが消えても、「バックアップ（JSON）から復元」で元に戻せます。
+
+## 主な機能
+
+- 給与登録（支給10項目・控除6項目・勤務情報3項目）
+- 自動計算（総支給・総控除・手取り、年間集計）
+- ホーム画面（今月の給与・今年の給与サマリー）
+- 給与履歴（一覧・詳細・編集・削除）
+- グラフ（月別手取り/総支給の推移、月別残業時間、年別年収）
+- 前月比、年収予測、残業分析
+- CSV出力
+- JSONバックアップ・復元（設定画面）
+- PWA対応（ホーム画面に追加してアプリのように使える）
 
 ## 項目を追加・編集したい場合
 
-給与の項目（支給・控除・勤務情報）は以下の3ファイルで一元管理されています。
+給与の項目（支給・控除・勤務情報）は以下の2ファイルで一元管理されています。
 
-1. `supabase/migrations/` に新しいカラムを追加するSQLを書いて実行する
-2. `src/types/database.ts` の `SalaryRecordRow` に同じ名前のプロパティを追加する
-3. `src/lib/salary/fields.ts` の配列に1行追加する
+1. `src/types/salary.ts` の `SalaryRecordRow` に新しいプロパティを追加する
+2. `src/lib/salary/fields.ts` の配列に1行追加する
 
 これだけで、登録フォーム・自動集計・履歴表示すべてに新しい項目が反映されます。
 
-## デプロイ（Vercel）
+## iPhoneからのアクセス方法
 
-1. https://vercel.com/ でGitHubリポジトリをインポート
-2. 「Environment Variables」に `.env.local` と同じ内容（`NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`）を設定
-3. Deploy
+1. デプロイしたURL（またはローカルなら同じネットワーク内からアクセスできるURL）をSafariで開く
+2. 共有ボタン →「ホーム画面に追加」
+3. ホーム画面のアイコンからアプリのように開いて使う
 
 ## ディレクトリ構成の概要
 
 ```
 src/
   app/
-    login/            ログイン・新規登録画面
-    (app)/            ログインが必要な画面（認証ガード付きレイアウト）
-      home/            ホーム画面
-      history/         給与履歴一覧・詳細/編集
-      register/        給与新規登録
-      analytics/       分析（前月比・年収予測・残業分析・グラフ）
-      settings/        設定（ログアウト・CSV出力）
+    home/            ホーム画面
+    history/         給与履歴一覧・詳細/編集
+    register/        給与新規登録
+    analytics/       分析（前月比・年収予測・残業分析・グラフ）
+    settings/        設定（CSV/JSONエクスポート・復元・全削除）
   components/          UI部品（カード・ボトムナビ・グラフなど）
-  context/             給与データの共有Context
+  context/             給与データ取得用フック（localStorageを購読）
   lib/
-    supabase/          Supabaseクライアント
-    salary/            給与の項目定義・自動計算・CSV出力
-  types/               Supabaseテーブルの型定義
-supabase/migrations/    Supabase用のマイグレーションSQL
+    storage/           localStorageへの読み書き（データの保存先）
+    salary/             給与の項目定義・自動計算・CSV出力
+  types/               給与データの型定義
 ```

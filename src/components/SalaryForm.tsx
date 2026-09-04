@@ -3,8 +3,7 @@
 // 給与登録・編集フォーム。新規登録画面(register)と履歴の編集画面の両方から使う共通部品。
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { useSalaryData } from "@/context/SalaryDataContext";
+import { saveRecord, deleteRecord } from "@/lib/storage/salaryStore";
 import {
   ALL_FIELDS,
   DEDUCTION_FIELDS,
@@ -13,7 +12,7 @@ import {
   createEmptySalaryInput,
   type NumericSalaryKey,
 } from "@/lib/salary/fields";
-import type { SalaryRecordRow } from "@/types/database";
+import type { SalaryRecordRow } from "@/types/salary";
 import { formatYen } from "@/lib/format";
 
 type Props = {
@@ -24,8 +23,6 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 export default function SalaryForm({ initialRecord }: Props) {
   const router = useRouter();
-  const supabase = createClient();
-  const { refresh } = useSalaryData();
   const isEdit = Boolean(initialRecord);
 
   const now = new Date();
@@ -42,8 +39,6 @@ export default function SalaryForm({ initialRecord }: Props) {
     return v;
   });
 
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   function updateValue(key: NumericSalaryKey, raw: string) {
@@ -56,23 +51,11 @@ export default function SalaryForm({ initialRecord }: Props) {
   const previewDeduction = DEDUCTION_FIELDS.reduce((sum, f) => sum + (values[f.key] || 0), 0);
   const previewNet = previewIncome - previewDeduction;
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
     setErrorMessage(null);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setErrorMessage("ログイン状態を確認できませんでした。再度ログインしてください。");
-      setSaving(false);
-      return;
-    }
-
     const payload = {
-      user_id: user.id,
       year,
       month,
       pay_date: payDate || null,
@@ -80,43 +63,21 @@ export default function SalaryForm({ initialRecord }: Props) {
       ...values,
     };
 
-    const { error } = isEdit
-      ? await supabase.from("salary_records").update(payload).eq("id", initialRecord!.id)
-      : await supabase.from("salary_records").insert(payload);
+    const { error } = saveRecord(payload, initialRecord?.id);
 
     if (error) {
-      if (error.code === "23505") {
-        setErrorMessage(
-          `${year}年${month}月のデータは既に登録されています。履歴画面から編集してください。`
-        );
-      } else {
-        setErrorMessage(error.message);
-      }
-      setSaving(false);
+      setErrorMessage(error);
       return;
     }
 
-    await refresh();
     router.push("/history");
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!initialRecord) return;
     if (!confirm(`${year}年${month}月の給与データを削除します。よろしいですか？`)) return;
 
-    setDeleting(true);
-    const { error } = await supabase
-      .from("salary_records")
-      .delete()
-      .eq("id", initialRecord.id);
-
-    if (error) {
-      setErrorMessage(error.message);
-      setDeleting(false);
-      return;
-    }
-
-    await refresh();
+    deleteRecord(initialRecord.id);
     router.push("/history");
   }
 
@@ -199,20 +160,18 @@ export default function SalaryForm({ initialRecord }: Props) {
       <div className="space-y-3">
         <button
           type="submit"
-          disabled={saving}
-          className="w-full rounded-2xl bg-accent px-4 py-3 text-base font-semibold text-white active:scale-[0.98] disabled:opacity-60"
+          className="w-full rounded-2xl bg-accent px-4 py-3 text-base font-semibold text-white active:scale-[0.98]"
         >
-          {saving ? "保存中..." : isEdit ? "更新する" : "登録する"}
+          {isEdit ? "更新する" : "登録する"}
         </button>
 
         {isEdit && (
           <button
             type="button"
             onClick={handleDelete}
-            disabled={deleting}
-            className="w-full rounded-2xl border border-negative px-4 py-3 text-base font-semibold text-negative disabled:opacity-60"
+            className="w-full rounded-2xl border border-negative px-4 py-3 text-base font-semibold text-negative"
           >
-            {deleting ? "削除中..." : "この月のデータを削除する"}
+            この月のデータを削除する
           </button>
         )}
       </div>

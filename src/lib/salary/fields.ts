@@ -2,16 +2,15 @@
 //
 // 「支給」「控除」「勤務情報」の各項目はすべてここに集約されている。
 // 項目を追加・変更したい場合は、
-//   1. supabase/migrations に新しいカラムを追加するSQLを書いて実行する
-//   2. src/types/database.ts の SalaryRecordRow に同名のプロパティを追加する
-//   3. このファイルの配列に1行追加する
-// の3ステップだけでよい。フォーム・自動集計・履歴表示は全てこの配列を参照して動く。
+//   1. src/types/salary.ts の SalaryRecordRow に同名のプロパティを追加する
+//   2. このファイルの配列に1行追加する
+// の2ステップだけでよい。フォーム・自動集計・履歴表示は全てこの配列を参照して動く。
 
-import type { SalaryRecordRow } from "@/types/database";
+import type { SalaryRecordRow } from "@/types/salary";
 
 export type NumericSalaryKey = Exclude<
   keyof SalaryRecordRow,
-  "id" | "user_id" | "year" | "month" | "pay_date" | "memo" | "created_at" | "updated_at"
+  "id" | "year" | "month" | "pay_date" | "memo" | "created_at" | "updated_at"
 >;
 
 export type SalaryFieldCategory = "income" | "deduction" | "work";

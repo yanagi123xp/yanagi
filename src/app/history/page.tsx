@@ -8,7 +8,7 @@ import { formatYen, monthLabel } from "@/lib/format";
 import { netPay, totalDeduction, totalIncome, sortByYearMonthDesc } from "@/lib/salary/calc";
 
 export default function HistoryPage() {
-  const { records, loading, errorMessage } = useSalaryData();
+  const { records } = useSalaryData();
 
   const sorted = sortByYearMonthDesc(records);
 
@@ -16,10 +16,7 @@ export default function HistoryPage() {
     <div>
       <h1 className="mb-6 text-lg font-bold text-gray-900">給与履歴</h1>
 
-      {loading && <p className="text-sm text-muted">読み込み中...</p>}
-      {errorMessage && <p className="text-sm text-negative">{errorMessage}</p>}
-
-      {!loading && sorted.length === 0 && (
+      {sorted.length === 0 && (
         <div className="flex flex-col items-center gap-4 pt-16 text-center">
           <p className="text-sm text-muted">まだ給与データがありません。</p>
           <Link

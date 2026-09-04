@@ -13,15 +13,7 @@ import {
 } from "@/lib/salary/calc";
 
 export default function HomePage() {
-  const { records, loading, errorMessage } = useSalaryData();
-
-  if (loading) {
-    return <CenteredMessage text="読み込み中..." />;
-  }
-
-  if (errorMessage) {
-    return <CenteredMessage text={`データの取得に失敗しました: ${errorMessage}`} />;
-  }
+  const { records } = useSalaryData();
 
   const { record: current, isActualCurrentMonth } = findCurrentOrLatestRecord(records);
 
@@ -111,14 +103,6 @@ function SummaryItem({
     <div>
       <dt className="text-xs text-muted">{label}</dt>
       <dd className={`mt-1 text-base font-bold tabular-nums ${valueClassName}`}>{value}</dd>
-    </div>
-  );
-}
-
-function CenteredMessage({ text }: { text: string }) {
-  return (
-    <div className="flex min-h-[50vh] items-center justify-center text-center text-sm text-muted">
-      {text}
     </div>
   );
 }

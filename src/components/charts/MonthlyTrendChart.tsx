@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import type { SalaryRecordRow } from "@/types/database";
+import type { SalaryRecordRow } from "@/types/salary";
 import { netPay, sortByYearMonthAsc, totalIncome } from "@/lib/salary/calc";
 import { formatYen } from "@/lib/format";
 

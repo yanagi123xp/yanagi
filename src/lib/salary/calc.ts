@@ -1,5 +1,5 @@
 // 給与の自動計算ロジック（総支給・総控除・手取り・年間集計・前月比・年収予測・残業分析）。
-import type { SalaryRecordRow } from "@/types/database";
+import type { SalaryRecordRow } from "@/types/salary";
 import { DEDUCTION_FIELDS, INCOME_FIELDS } from "./fields";
 
 // ---- 基本計算 ----

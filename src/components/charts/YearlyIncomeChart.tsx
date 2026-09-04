@@ -2,7 +2,7 @@
 
 // 年別の総支給額（年収）を棒グラフで表示する。
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { SalaryRecordRow } from "@/types/database";
+import type { SalaryRecordRow } from "@/types/salary";
 import { summarizeYear } from "@/lib/salary/calc";
 import { formatYen } from "@/lib/format";
 

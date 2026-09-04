@@ -1,5 +1,5 @@
 // 給与履歴をCSV文字列に変換し、ファイルとしてダウンロードさせるための処理。
-import type { SalaryRecordRow } from "@/types/database";
+import type { SalaryRecordRow } from "@/types/salary";
 import { totalDeduction, totalIncome, netPay, sortByYearMonthAsc } from "./calc";
 
 const CSV_HEADERS = ["年", "月", "総支給", "手取り", "控除", "残業時間", "残業代"];

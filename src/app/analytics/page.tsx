@@ -19,14 +19,8 @@ import {
 } from "@/lib/salary/calc";
 
 export default function AnalyticsPage() {
-  const { records, loading, errorMessage } = useSalaryData();
+  const { records } = useSalaryData();
 
-  if (loading) {
-    return <p className="pt-10 text-center text-sm text-muted">読み込み中...</p>;
-  }
-  if (errorMessage) {
-    return <p className="pt-10 text-center text-sm text-negative">{errorMessage}</p>;
-  }
   if (records.length === 0) {
     return (
       <p className="pt-10 text-center text-sm text-muted">
