@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+:root {
+  /* 金融アプリ風のシンプルな配色（白背景・余白多め） */
+  --background: #ffffff;
+  --foreground: #111827;
+  --muted: #6b7280;
+  --card-border: #eef0f3;
+  --accent: #2563eb;
+  --positive: #16a34a;
+  --negative: #dc2626;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-card-border: var(--card-border);
+  --color-accent: var(--accent);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* スマホでアプリらしく見せるため、ダークモードは使わず常に白背景で統一する */
+html {
+  background: var(--background);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* フォーム部品共通スタイル（SalaryFormなどから .input で利用） */
+.input {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid var(--card-border);
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  background: #fff;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+/* iPhoneでホーム画面に追加した際、上部の安全領域（ノッチ）を考慮する */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
