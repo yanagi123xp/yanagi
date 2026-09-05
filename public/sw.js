@@ -1,7 +1,7 @@
 // 給与管理アプリ用の簡易Service Worker。
 // このアプリはデータを全てブラウザのlocalStorageに保存しており、外部との通信を行わないため、
 // ページ・静的アセットをキャッシュしておけば、電波が無い場所でもアプリを開いて使い続けられる。
-const CACHE_NAME = "salary-app-shell-v2";
+const CACHE_NAME = "salary-app-shell-v3";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -22,6 +22,7 @@ function isCacheableRequest(request, url) {
   return (
     url.pathname.startsWith("/_next/static/") ||
     url.pathname.startsWith("/icons/") ||
+    url.pathname.startsWith("/tesseract/") || // 写真から自動入力するOCR機能に使うファイル
     url.pathname === "/manifest.webmanifest"
   );
 }

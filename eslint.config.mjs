@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 外部ライブラリのビルド済みファイル（minify済みで編集しないため対象外にする）
+    "public/tesseract/**",
   ]),
 ]);
 

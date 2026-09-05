@@ -14,6 +14,8 @@ import {
 } from "@/lib/salary/fields";
 import type { SalaryRecordRow } from "@/types/salary";
 import { formatYen } from "@/lib/format";
+import ScanFromPhoto from "@/components/ScanFromPhoto";
+import type { ParsedSalary } from "@/lib/ocr/parseSalaryText";
 
 type Props = {
   initialRecord?: SalaryRecordRow;
@@ -40,10 +42,21 @@ export default function SalaryForm({ initialRecord }: Props) {
   });
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
 
   function updateValue(key: NumericSalaryKey, raw: string) {
     const num = raw === "" ? 0 : Number(raw);
     setValues((prev) => ({ ...prev, [key]: Number.isFinite(num) ? num : 0 }));
+  }
+
+  function handleScanned(result: ParsedSalary) {
+    setValues((prev) => ({ ...prev, ...result.values }));
+    if (result.year !== null) setYear(result.year);
+    if (result.month !== null) setMonth(result.month);
+    if (result.payDate !== null) setPayDate(result.payDate);
+    setScanMessage(
+      `${result.matchedCount}個の項目を読み取りました。内容を確認してから登録してください。`
+    );
   }
 
   // 入力中の値からリアルタイムでプレビュー計算する
@@ -83,6 +96,15 @@ export default function SalaryForm({ initialRecord }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 pb-10">
+      <section>
+        <ScanFromPhoto onScanned={handleScanned} />
+        {scanMessage && (
+          <p className="mt-2 rounded-xl bg-blue-50 px-4 py-3 text-sm text-accent">
+            {scanMessage}
+          </p>
+        )}
+      </section>
+
       <section>
         <h2 className="mb-3 text-sm font-semibold text-gray-700">基本情報</h2>
         <div className="grid grid-cols-2 gap-3">
