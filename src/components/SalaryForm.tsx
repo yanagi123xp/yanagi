@@ -12,7 +12,7 @@ import {
   createEmptySalaryInput,
   type NumericSalaryKey,
 } from "@/lib/salary/fields";
-import type { SalaryRecordRow } from "@/types/salary";
+import type { CustomLineItem, SalaryRecordRow } from "@/types/salary";
 import { formatYen } from "@/lib/format";
 import ScanFromPhoto from "@/components/ScanFromPhoto";
 import type { ParsedSalary } from "@/lib/ocr/parseSalaryText";
@@ -20,6 +20,13 @@ import type { ParsedSalary } from "@/lib/ocr/parseSalaryText";
 type Props = {
   initialRecord?: SalaryRecordRow;
 };
+
+// フォーム編集中だけ使う、自由項目の1行分のデータ（Reactの一覧表示用に一時的なidを持たせる）
+type EditableItem = { id: string; label: string; amount: number };
+
+function toEditableItems(items: CustomLineItem[] | undefined): EditableItem[] {
+  return (items ?? []).map((item) => ({ id: crypto.randomUUID(), ...item }));
+}
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
@@ -40,6 +47,12 @@ export default function SalaryForm({ initialRecord }: Props) {
     }
     return v;
   });
+  const [customIncomeItems, setCustomIncomeItems] = useState<EditableItem[]>(() =>
+    toEditableItems(initialRecord?.custom_income_items)
+  );
+  const [customDeductionItems, setCustomDeductionItems] = useState<EditableItem[]>(() =>
+    toEditableItems(initialRecord?.custom_deduction_items)
+  );
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
@@ -54,19 +67,39 @@ export default function SalaryForm({ initialRecord }: Props) {
     if (result.year !== null) setYear(result.year);
     if (result.month !== null) setMonth(result.month);
     if (result.payDate !== null) setPayDate(result.payDate);
+    // アプリが項目名を知らなかったものは、自由項目として追加する
+    if (result.customIncomeItems.length > 0) {
+      setCustomIncomeItems((prev) => [...prev, ...toEditableItems(result.customIncomeItems)]);
+    }
+    if (result.customDeductionItems.length > 0) {
+      setCustomDeductionItems((prev) => [
+        ...prev,
+        ...toEditableItems(result.customDeductionItems),
+      ]);
+    }
     setScanMessage(
       `${result.matchedCount}個の項目を読み取りました。内容を確認してから登録してください。`
     );
   }
 
   // 入力中の値からリアルタイムでプレビュー計算する
-  const previewIncome = INCOME_FIELDS.reduce((sum, f) => sum + (values[f.key] || 0), 0);
-  const previewDeduction = DEDUCTION_FIELDS.reduce((sum, f) => sum + (values[f.key] || 0), 0);
+  const previewIncome =
+    INCOME_FIELDS.reduce((sum, f) => sum + (values[f.key] || 0), 0) +
+    customIncomeItems.reduce((sum, item) => sum + (item.amount || 0), 0);
+  const previewDeduction =
+    DEDUCTION_FIELDS.reduce((sum, f) => sum + (values[f.key] || 0), 0) +
+    customDeductionItems.reduce((sum, item) => sum + (item.amount || 0), 0);
   const previewNet = previewIncome - previewDeduction;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMessage(null);
+
+    // 項目名が空の自由項目は保存しない
+    const toLineItems = (items: EditableItem[]): CustomLineItem[] =>
+      items
+        .filter((item) => item.label.trim() !== "")
+        .map((item) => ({ label: item.label.trim(), amount: item.amount }));
 
     const payload = {
       year,
@@ -74,6 +107,8 @@ export default function SalaryForm({ initialRecord }: Props) {
       pay_date: payDate || null,
       memo: memo || null,
       ...values,
+      custom_income_items: toLineItems(customIncomeItems),
+      custom_deduction_items: toLineItems(customDeductionItems),
     };
 
     const { error } = saveRecord(payload, initialRecord?.id);
@@ -144,7 +179,21 @@ export default function SalaryForm({ initialRecord }: Props) {
       </section>
 
       <FieldGroup title="支給" fields={INCOME_FIELDS} values={values} onChange={updateValue} />
+      <CustomItemsEditor
+        title="支給（その他の項目）"
+        items={customIncomeItems}
+        onChange={setCustomIncomeItems}
+        placeholder="例）待機手当"
+      />
+
       <FieldGroup title="控除" fields={DEDUCTION_FIELDS} values={values} onChange={updateValue} />
+      <CustomItemsEditor
+        title="控除（その他の項目）"
+        items={customDeductionItems}
+        onChange={setCustomDeductionItems}
+        placeholder="例）寮費"
+      />
+
       <FieldGroup title="勤務情報" fields={WORK_FIELDS} values={values} onChange={updateValue} />
 
       <section>
@@ -198,6 +247,79 @@ export default function SalaryForm({ initialRecord }: Props) {
         )}
       </div>
     </form>
+  );
+}
+
+// 「基本給」のように決まった名前を持たない、会社独自の手当・控除を
+// 自由に追加できる編集欄（項目名＋金額のペアをいくつでも追加できる）。
+function CustomItemsEditor({
+  title,
+  items,
+  onChange,
+  placeholder,
+}: {
+  title: string;
+  items: EditableItem[];
+  onChange: (items: EditableItem[]) => void;
+  placeholder: string;
+}) {
+  function updateItem(id: string, patch: Partial<Pick<EditableItem, "label" | "amount">>) {
+    onChange(items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function removeItem(id: string) {
+    onChange(items.filter((item) => item.id !== id));
+  }
+
+  function addItem() {
+    onChange([...items, { id: crypto.randomUUID(), label: "", amount: 0 }]);
+  }
+
+  return (
+    <section>
+      <h2 className="mb-3 text-sm font-semibold text-gray-700">{title}</h2>
+      {items.length > 0 && (
+        <div className="space-y-3">
+          {items.map((item) => (
+            <div key={item.id} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={item.label}
+                onChange={(e) => updateItem(item.id, { label: e.target.value })}
+                placeholder={placeholder}
+                className="input flex-[3]"
+              />
+              <input
+                type="number"
+                inputMode="decimal"
+                value={item.amount === 0 ? "" : item.amount}
+                onChange={(e) => {
+                  const num = Number(e.target.value);
+                  updateItem(item.id, { amount: Number.isFinite(num) ? num : 0 });
+                }}
+                placeholder="0"
+                className="input flex-[2]"
+              />
+              <button
+                type="button"
+                onClick={() => removeItem(item.id)}
+                aria-label="この項目を削除"
+                className="shrink-0 rounded-xl border border-card-border px-3 py-3 text-muted"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={addItem}
+        className="mt-3 w-full rounded-2xl border border-dashed border-card-border px-4 py-3 text-sm font-medium text-accent"
+      >
+        + 項目を追加
+      </button>
+    </section>
   );
 }
 

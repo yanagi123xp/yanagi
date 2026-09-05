@@ -4,14 +4,18 @@ import { DEDUCTION_FIELDS, INCOME_FIELDS } from "./fields";
 
 // ---- 基本計算 ----
 
-// 総支給額 = すべての支給項目の合計
+// 総支給額 = すべての支給項目の合計（会社独自の自由項目を含む）
 export function totalIncome(record: SalaryRecordRow): number {
-  return INCOME_FIELDS.reduce((sum, field) => sum + (record[field.key] ?? 0), 0);
+  const fixed = INCOME_FIELDS.reduce((sum, field) => sum + (record[field.key] ?? 0), 0);
+  const custom = (record.custom_income_items ?? []).reduce((sum, item) => sum + item.amount, 0);
+  return fixed + custom;
 }
 
-// 総控除額 = すべての控除項目の合計
+// 総控除額 = すべての控除項目の合計（会社独自の自由項目を含む）
 export function totalDeduction(record: SalaryRecordRow): number {
-  return DEDUCTION_FIELDS.reduce((sum, field) => sum + (record[field.key] ?? 0), 0);
+  const fixed = DEDUCTION_FIELDS.reduce((sum, field) => sum + (record[field.key] ?? 0), 0);
+  const custom = (record.custom_deduction_items ?? []).reduce((sum, item) => sum + item.amount, 0);
+  return fixed + custom;
 }
 
 // 手取り額 = 総支給額 − 総控除額

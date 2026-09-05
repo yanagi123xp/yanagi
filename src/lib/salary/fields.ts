@@ -10,7 +10,15 @@ import type { SalaryRecordRow } from "@/types/salary";
 
 export type NumericSalaryKey = Exclude<
   keyof SalaryRecordRow,
-  "id" | "year" | "month" | "pay_date" | "memo" | "created_at" | "updated_at"
+  | "id"
+  | "year"
+  | "month"
+  | "pay_date"
+  | "memo"
+  | "created_at"
+  | "updated_at"
+  | "custom_income_items"
+  | "custom_deduction_items"
 >;
 
 export type SalaryFieldCategory = "income" | "deduction" | "work";
@@ -39,6 +47,7 @@ export const INCOME_FIELDS: SalaryFieldDef[] = [
 // 【控除】項目
 export const DEDUCTION_FIELDS: SalaryFieldDef[] = [
   { key: "health_insurance", label: "健康保険", category: "deduction", unit: "yen" },
+  { key: "care_insurance", label: "介護保険", category: "deduction", unit: "yen" },
   { key: "pension", label: "厚生年金", category: "deduction", unit: "yen" },
   { key: "employment_insurance", label: "雇用保険", category: "deduction", unit: "yen" },
   { key: "income_tax", label: "所得税", category: "deduction", unit: "yen" },

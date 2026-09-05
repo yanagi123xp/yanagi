@@ -3,6 +3,8 @@
 // 給与明細は会社によって書式が違うため、完璧な読み取りはできない。
 // 「ラベル（基本給、など）を含む行から、その後ろにある数値を拾う」という
 // シンプルなルールで、できる範囲を自動入力し、最終的な確認は必ず人間が行う前提にしている。
+// アプリが知らない項目名（会社独自の手当など）は「自由項目」として拾い、
+// 金額と項目名をそのままフォームに追加する。
 
 import { ALL_FIELDS, type NumericSalaryKey } from "@/lib/salary/fields";
 
@@ -19,6 +21,7 @@ const SYNONYMS: Partial<Record<NumericSalaryKey, string[]>> = {
   other_allowance: ["その他手当", "諸手当"],
   bonus: ["賞与", "ボーナス"],
   health_insurance: ["健康保険"],
+  care_insurance: ["介護保険"],
   pension: ["厚生年金"],
   employment_insurance: ["雇用保険"],
   income_tax: ["所得税"],
@@ -29,8 +32,22 @@ const SYNONYMS: Partial<Record<NumericSalaryKey, string[]>> = {
   paid_leave_days: ["有給取得日数", "有給消化日数", "有給日数"],
 };
 
+// 合計・総額など、内訳ではなく計算結果を表す行は自由項目として取り込まない
+// （そのまま追加すると、アプリ側の自動計算と二重に足されてしまうため）
+const TOTAL_LABEL_PATTERNS = ["合計", "総支給", "総額", "差引", "小計"];
+
+// セクション見出しになりうる語句（数字を含まない行でセクションを切り替える）
+const INCOME_SECTION_HEADERS = ["支給額", "支給"];
+const DEDUCTION_SECTION_HEADERS = ["控除額", "控除"];
+// これらの見出しが出たら、それ以降は自由項目として拾わない（勤怠時間や回数などのため）
+const IGNORE_SECTION_HEADERS = ["勤怠", "その他", "備考", "銀行", "振込"];
+
+export type CustomItemCandidate = { label: string; amount: number };
+
 export type ParsedSalary = {
   values: Partial<Record<NumericSalaryKey, number>>;
+  customIncomeItems: CustomItemCandidate[];
+  customDeductionItems: CustomItemCandidate[];
   year: number | null;
   month: number | null;
   payDate: string | null;
@@ -53,6 +70,20 @@ function extractDecimalNumber(text: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+// 勤怠システムは残業時間を "29:30"（29時間30分）のような表記にすることが多いため、
+// その場合は10進数の時間（29.5）に変換する
+function extractHoursNumber(text: string): number | null {
+  const hmMatch = text.match(/([0-9]+):([0-9]{2})/);
+  if (hmMatch) {
+    const hours = Number(hmMatch[1]);
+    const minutes = Number(hmMatch[2]);
+    if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+      return hours + minutes / 60;
+    }
+  }
+  return extractDecimalNumber(text);
+}
+
 export function parseSalaryText(rawText: string): ParsedSalary {
   const lines = rawText
     .split(/\r?\n/)
@@ -61,13 +92,16 @@ export function parseSalaryText(rawText: string): ParsedSalary {
 
   const fieldByKey = new Map(ALL_FIELDS.map((field) => [field.key, field]));
   const values: Partial<Record<NumericSalaryKey, number>> = {};
+  const consumedLines = new Set<number>();
   let matchedCount = 0;
 
+  // --- 1. アプリが知っている項目（基本給、健康保険 など）を探す ---
   for (const [key, synonyms] of Object.entries(SYNONYMS) as [NumericSalaryKey, string[]][]) {
     const field = fieldByKey.get(key);
     if (!field || !synonyms) continue;
 
     for (let i = 0; i < lines.length; i++) {
+      if (consumedLines.has(i)) continue;
       // OCRは文字の間に余計な空白を入れることが多いため、空白を除いてから探す
       const noSpace = lines[i].replace(/\s+/g, "");
       const matchedSynonym = synonyms.find((s) => noSpace.includes(s));
@@ -75,21 +109,73 @@ export function parseSalaryText(rawText: string): ParsedSalary {
 
       // ラベルの右側（同じ行）に数値がなければ、次の行を見る
       let numberSource = noSpace.slice(noSpace.indexOf(matchedSynonym) + matchedSynonym.length);
+      let usedLineIndex = i;
       if (!/[0-9]/.test(numberSource) && i + 1 < lines.length) {
         numberSource = lines[i + 1].replace(/\s+/g, "");
+        usedLineIndex = i + 1;
       }
 
       const value =
-        field.unit === "yen" ? extractYenNumber(numberSource) : extractDecimalNumber(numberSource);
+        field.unit === "yen"
+          ? extractYenNumber(numberSource)
+          : field.unit === "hour"
+            ? extractHoursNumber(numberSource)
+            : extractDecimalNumber(numberSource);
       if (value !== null) {
         values[key] = value;
         matchedCount += 1;
+        consumedLines.add(i);
+        consumedLines.add(usedLineIndex);
       }
       break; // この項目は最初に見つかった箇所だけを採用する
     }
   }
 
-  // 年・月・支給日の検出（例: "2026年8月分" "支給日 2026/08/25"）
+  // --- 2. アプリが知らない項目を「自由項目」として拾う ---
+  // 「■支給額」「■控除額」のような見出しでセクションを判定し、
+  // 見出しの中にいる間だけ「ラベル＋金額」の行を自由項目の候補にする。
+  const customIncomeItems: CustomItemCandidate[] = [];
+  const customDeductionItems: CustomItemCandidate[] = [];
+  let section: "income" | "deduction" | "none" = "none";
+
+  for (let i = 0; i < lines.length; i++) {
+    const noSpace = lines[i].replace(/\s+/g, "");
+    const hasDigit = /[0-9]/.test(noSpace);
+
+    if (!hasDigit) {
+      // 数字を含まない行は、セクションの見出しかどうかだけ確認する
+      if (DEDUCTION_SECTION_HEADERS.some((h) => noSpace.includes(h))) {
+        section = "deduction";
+      } else if (INCOME_SECTION_HEADERS.some((h) => noSpace.includes(h))) {
+        section = "income";
+      } else if (IGNORE_SECTION_HEADERS.some((h) => noSpace.includes(h))) {
+        section = "none";
+      }
+      continue;
+    }
+
+    if (section === "none") continue;
+    if (consumedLines.has(i)) continue;
+    if (TOTAL_LABEL_PATTERNS.some((t) => noSpace.includes(t))) continue;
+
+    const numberMatch = noSpace.match(/[0-9][0-9,]*/);
+    if (!numberMatch || numberMatch.index === undefined) continue;
+
+    const label = noSpace.slice(0, numberMatch.index).trim();
+    if (!label || label.length > 20) continue;
+
+    const amount = extractYenNumber(noSpace.slice(numberMatch.index));
+    // 金額が0円の項目は情報として意味が薄いため、フォームを煩雑にしないよう省略する
+    if (amount === null || amount === 0) continue;
+
+    if (section === "income") {
+      customIncomeItems.push({ label, amount });
+    } else {
+      customDeductionItems.push({ label, amount });
+    }
+  }
+
+  // --- 3. 年・月・支給日の検出（例: "2026年8月分" "支給日 2026/08/25"） ---
   const fullText = rawText.replace(/\s+/g, "");
   let year: number | null = null;
   let month: number | null = null;
@@ -111,5 +197,13 @@ export function parseSalaryText(rawText: string): ParsedSalary {
     if (month === null) month = m;
   }
 
-  return { values, year, month, payDate, matchedCount };
+  return {
+    values,
+    customIncomeItems,
+    customDeductionItems,
+    year,
+    month,
+    payDate,
+    matchedCount: matchedCount + customIncomeItems.length + customDeductionItems.length,
+  };
 }

@@ -2,6 +2,13 @@
 // このアプリはサーバーを持たず、ブラウザのlocalStorageにデータを保存するため、
 // user_idなどのアカウント関連の項目は存在しない。
 
+// 会社ごとに独自の手当・控除（例: 待機手当、寮費など）を登録できるようにするための
+// 自由項目。名前と金額のペアを好きなだけ追加できる。
+export type CustomLineItem = {
+  label: string;
+  amount: number;
+};
+
 export type SalaryRecordRow = {
   id: string;
   year: number;
@@ -18,13 +25,18 @@ export type SalaryRecordRow = {
   holiday_allowance: number;
   other_allowance: number;
   bonus: number;
+  // 支給（自由項目：待機手当、資格ごとの手当など会社独自のもの）
+  custom_income_items: CustomLineItem[];
   // 控除
   health_insurance: number;
+  care_insurance: number;
   pension: number;
   employment_insurance: number;
   income_tax: number;
   resident_tax: number;
   other_deduction: number;
+  // 控除（自由項目：寮費、駐車場代など会社独自のもの）
+  custom_deduction_items: CustomLineItem[];
   // 勤務情報
   overtime_hours: number;
   holiday_work_hours: number;
