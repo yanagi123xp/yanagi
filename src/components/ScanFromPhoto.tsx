@@ -10,10 +10,14 @@ import { parseSalaryText, type ParsedSalary } from "@/lib/ocr/parseSalaryText";
 
 // スクリーンショットなど文字が小さい画像は、そのままだと文字認識の精度が落ちやすい。
 // 画像が小さい場合はあらかじめ拡大してから認識にかけることで精度を底上げする。
-const MIN_WIDTH_FOR_OCR = 1800;
-const MAX_UPSCALE = 4;
+//
+// 【注意】白黒化・コントラスト強調も試したが、実際の給与明細写真で検証したところ
+// 別の桁を誤読するようになる（改善にならない）ケースがあったため、
+// シンプルな拡大のみにとどめている。
+const MIN_WIDTH_FOR_OCR = 2400;
+const MAX_UPSCALE = 5;
 
-async function upscaleIfSmall(file: File): Promise<Blob> {
+async function preprocessImageForOcr(file: File): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(MAX_UPSCALE, Math.max(1, MIN_WIDTH_FOR_OCR / bitmap.width));
 
@@ -64,8 +68,8 @@ export default function ScanFromPhoto({ onScanned }: Props) {
     setState({ status: "loading", progress: 0, label: "画像を準備中..." });
 
     try {
-      // 画像が小さい（スクリーンショットなど）場合は先に拡大しておく
-      const imageForOcr = await upscaleIfSmall(file);
+      // 拡大・白黒化・コントラスト強調をしてから認識にかける
+      const imageForOcr = await preprocessImageForOcr(file);
 
       // tesseract.jsは重いので、実際にボタンを押したときだけ読み込む
       const { createWorker } = await import("tesseract.js");

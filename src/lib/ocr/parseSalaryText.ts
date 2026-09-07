@@ -36,6 +36,10 @@ const SYNONYMS: Partial<Record<NumericSalaryKey, string[]>> = {
 // （そのまま追加すると、アプリ側の自動計算と二重に足されてしまうため）
 const TOTAL_LABEL_PATTERNS = ["合計", "総支給", "総額", "差引", "小計"];
 
+// 「残業手当」の内訳として扱われることが多い項目名。
+// 「残業手当」の合計が読み取れているときは、これらは二重計上になるため自由項目に含めない。
+const OVERTIME_BREAKDOWN_PATTERNS = ["残業", "時給", "早・遅"];
+
 // セクション見出しになりうる語句（数字を含まない行でセクションを切り替える）
 const INCOME_SECTION_HEADERS = ["支給額", "支給"];
 const DEDUCTION_SECTION_HEADERS = ["控除額", "控除"];
@@ -212,6 +216,15 @@ export function parseSalaryText(rawText: string): ParsedSalary {
 
     if (!label || label.length > 20) continue;
     if (TOTAL_LABEL_PATTERNS.some((t) => label.includes(t))) continue;
+    // 「残業手当」が既に合計として読み取れている場合、「通常残業」「深夜残業」「時給」
+    // 「早・遅」のような内訳項目は残業手当に含まれているため、別項目としては追加しない
+    // （そのまま追加すると残業代が二重に計上されてしまうため）
+    if (
+      values.overtime_pay !== undefined &&
+      OVERTIME_BREAKDOWN_PATTERNS.some((p) => label.includes(p))
+    ) {
+      continue;
+    }
 
     const amount = extractYenNumber(noSpace.slice(numberMatch.index));
     // 金額が0円の項目は情報として意味が薄いため、フォームを煩雑にしないよう省略する
