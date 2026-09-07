@@ -8,6 +8,37 @@
 import { useRef, useState } from "react";
 import { parseSalaryText, type ParsedSalary } from "@/lib/ocr/parseSalaryText";
 
+// スクリーンショットなど文字が小さい画像は、そのままだと文字認識の精度が落ちやすい。
+// 画像が小さい場合はあらかじめ拡大してから認識にかけることで精度を底上げする。
+const MIN_WIDTH_FOR_OCR = 1800;
+const MAX_UPSCALE = 4;
+
+async function upscaleIfSmall(file: File): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(MAX_UPSCALE, Math.max(1, MIN_WIDTH_FOR_OCR / bitmap.width));
+
+  if (scale <= 1) {
+    bitmap.close();
+    return file;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    bitmap.close();
+    return file;
+  }
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  return blob ?? file;
+}
+
 type Props = {
   onScanned: (result: ParsedSalary) => void;
 };
@@ -30,9 +61,12 @@ export default function ScanFromPhoto({ onScanned }: Props) {
     e.target.value = ""; // 同じ写真をもう一度選べるようにリセット
     if (!file) return;
 
-    setState({ status: "loading", progress: 0, label: "準備中..." });
+    setState({ status: "loading", progress: 0, label: "画像を準備中..." });
 
     try {
+      // 画像が小さい（スクリーンショットなど）場合は先に拡大しておく
+      const imageForOcr = await upscaleIfSmall(file);
+
       // tesseract.jsは重いので、実際にボタンを押したときだけ読み込む
       const { createWorker } = await import("tesseract.js");
 
@@ -49,7 +83,7 @@ export default function ScanFromPhoto({ onScanned }: Props) {
         },
       });
 
-      const { data } = await worker.recognize(file, {}, { text: true });
+      const { data } = await worker.recognize(imageForOcr, {}, { text: true });
       await worker.terminate();
 
       const parsed = parseSalaryText(data.text);

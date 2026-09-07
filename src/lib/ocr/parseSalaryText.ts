@@ -93,6 +93,10 @@ export function parseSalaryText(rawText: string): ParsedSalary {
   const fieldByKey = new Map(ALL_FIELDS.map((field) => [field.key, field]));
   const values: Partial<Record<NumericSalaryKey, number>> = {};
   const consumedLines = new Set<number>();
+  // 各行が「支給」「控除」のどちらの固定項目として読み取られたかを覚えておく。
+  // 見出し（■支給額など）がOCRで読み取れなかった場合でも、
+  // 確実に読み取れた固定項目（基本給・健康保険など）を手がかりにセクションを判定できるようにする。
+  const lineCategory = new Map<number, "income" | "deduction">();
   let matchedCount = 0;
 
   // --- 1. アプリが知っている項目（基本給、健康保険 など）を探す ---
@@ -126,6 +130,10 @@ export function parseSalaryText(rawText: string): ParsedSalary {
         matchedCount += 1;
         consumedLines.add(i);
         consumedLines.add(usedLineIndex);
+        if (field.category === "income" || field.category === "deduction") {
+          lineCategory.set(i, field.category);
+          lineCategory.set(usedLineIndex, field.category);
+        }
       }
       break; // この項目は最初に見つかった箇所だけを採用する
     }
@@ -134,16 +142,39 @@ export function parseSalaryText(rawText: string): ParsedSalary {
   // --- 2. アプリが知らない項目を「自由項目」として拾う ---
   // 「■支給額」「■控除額」のような見出しでセクションを判定し、
   // 見出しの中にいる間だけ「ラベル＋金額」の行を自由項目の候補にする。
+  //
+  // スマホの縦長スクリーンショットなどでは、ラベルと金額が
+  //   皆勤手当
+  //   11,825
+  // のように別々の行に分かれて読み取られることが多いため、
+  // 同じ行にラベルが無い場合は直前の行をラベルとして扱う。
   const customIncomeItems: CustomItemCandidate[] = [];
   const customDeductionItems: CustomItemCandidate[] = [];
   let section: "income" | "deduction" | "none" = "none";
 
+  const isHeaderLine = (noSpace: string) =>
+    [...INCOME_SECTION_HEADERS, ...DEDUCTION_SECTION_HEADERS, ...IGNORE_SECTION_HEADERS].some(
+      (h) => noSpace.includes(h)
+    );
+
+  // 数字・カンマ・小数点・コロンだけで構成された「金額そのものの行」かどうか。
+  // 「4月定昇」のように数字で始まる項目名を、金額の行と誤認しないために使う。
+  const isPureNumberLine = (noSpace: string) => noSpace.replace(/[0-9,.\-:]/g, "").length === 0;
+
   for (let i = 0; i < lines.length; i++) {
+    // 見出しがうまく読み取れなかった場合に備え、確実に読み取れた固定項目があれば
+    // それを手がかりにセクションを補正する（見出しより優先度の高い判定材料として扱う）
+    const knownCategory = lineCategory.get(i);
+    if (knownCategory) section = knownCategory;
+
     const noSpace = lines[i].replace(/\s+/g, "");
     const hasDigit = /[0-9]/.test(noSpace);
 
     if (!hasDigit) {
-      // 数字を含まない行は、セクションの見出しかどうかだけ確認する
+      // 「差引支給額」のような合計行は「支給額」を含んでしまうが見出しではないため、
+      // 先に除外してからセクションの見出しかどうかを確認する
+      if (TOTAL_LABEL_PATTERNS.some((t) => noSpace.includes(t))) continue;
+
       if (DEDUCTION_SECTION_HEADERS.some((h) => noSpace.includes(h))) {
         section = "deduction";
       } else if (INCOME_SECTION_HEADERS.some((h) => noSpace.includes(h))) {
@@ -156,13 +187,31 @@ export function parseSalaryText(rawText: string): ParsedSalary {
 
     if (section === "none") continue;
     if (consumedLines.has(i)) continue;
-    if (TOTAL_LABEL_PATTERNS.some((t) => noSpace.includes(t))) continue;
 
     const numberMatch = noSpace.match(/[0-9][0-9,]*/);
     if (!numberMatch || numberMatch.index === undefined) continue;
 
-    const label = noSpace.slice(0, numberMatch.index).trim();
+    // 「4月定昇・正月手当」のように数字で始まる項目名は、金額ではなくラベルとして扱う
+    // （実際の金額は次の行にあるはずなので、ここでは何もせず次の行の処理に委ねる）
+    const trailingAfterNumber = noSpace.slice(numberMatch.index + numberMatch[0].length);
+    const isDigitPrefixedLabel =
+      numberMatch.index === 0 && /[^0-9,.\-:]/.test(trailingAfterNumber);
+    if (isDigitPrefixedLabel) continue;
+
+    let label = noSpace.slice(0, numberMatch.index).trim();
+    let labelLineIndex: number | null = null;
+
+    if (!label && i > 0 && !consumedLines.has(i - 1)) {
+      // 同じ行にラベルが無ければ、直前の行をラベルの候補にする
+      const prevNoSpace = lines[i - 1].replace(/\s+/g, "");
+      if (!isPureNumberLine(prevNoSpace) && !isHeaderLine(prevNoSpace)) {
+        label = prevNoSpace.trim();
+        labelLineIndex = i - 1;
+      }
+    }
+
     if (!label || label.length > 20) continue;
+    if (TOTAL_LABEL_PATTERNS.some((t) => label.includes(t))) continue;
 
     const amount = extractYenNumber(noSpace.slice(numberMatch.index));
     // 金額が0円の項目は情報として意味が薄いため、フォームを煩雑にしないよう省略する
@@ -173,6 +222,8 @@ export function parseSalaryText(rawText: string): ParsedSalary {
     } else {
       customDeductionItems.push({ label, amount });
     }
+    consumedLines.add(i);
+    if (labelLineIndex !== null) consumedLines.add(labelLineIndex);
   }
 
   // --- 3. 年・月・支給日の検出（例: "2026年8月分" "支給日 2026/08/25"） ---
